@@ -17,7 +17,7 @@ prompt:
 2. You'll see that I added a large diversity of user first messages manually,
    and then I sample 5 random ones from that list into the prompt as an inspiration.
    This is really important to do because DIVERSITY CONTROL is key. If you don't
-   manually inject diversity, the LLM might generate extrremely similar and repeptitive
+   manually inject diversity, the LLM might generate extremely similar and repetitive
    conversations and things won't work well. Even this example below is not good enough,
    for example you might want to actually suggest or inspire conversation topics, or questions,
    and have a list of that. Basically, this is the KEY creative part to get right. Make sure you

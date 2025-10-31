@@ -49,6 +49,9 @@ unembedding_lr = 0.004 # learning rate for the unembedding parameters (Adam)
 weight_decay = 0.0 # weight decay for the embedding/unembedding parameters (Adam)
 matrix_lr = 0.02 # learning rate for the matrix parameters (Muon)
 grad_clip = 1.0 # gradient clipping value (0.0 = disabled)
+warmup_ratio = 0.0 # ratio of iterations for LR warmup
+warmdown_ratio = 0.2 # ratio of iterations for LR warmdown
+final_lr_frac = 0.0 # final LR is this fraction of the initial LR
 # Evaluation
 eval_every = 250 # every how many steps to evaluate the model for val bpb
 eval_tokens = 20*524288 # number of tokens to evaluate val loss on
@@ -151,10 +154,6 @@ x, y = next(train_loader) # kick off load of the very first batch of data
 # Set up hyperparameter schedulers
 
 # Learning rate scheduler
-# TODO: experiment with a short warmup for the AdamW params (expecting slight improvement)
-warmup_ratio = 0.0 # ratio of iterations for LR warmup
-warmdown_ratio = 0.2 # ratio of iterations for LR warmdown
-final_lr_frac = 0.0 # final LR is this fraction of the initial LR
 def get_lr_multiplier(it):
     warmup_iters = round(warmup_ratio * num_iterations)
     warmdown_iters = round(warmdown_ratio * num_iterations)
@@ -272,7 +271,7 @@ for step in range(num_iterations + 1):
         loss = loss / grad_accum_steps # each .backward() is a grad sum => normalize loss here
         loss.backward()
         x, y = next(train_loader) # prefetch the next batch while the GPU is busy with forward/backward
-    # gradient clipping (TODO possibly expertiment with)
+    # gradient clipping (TODO possibly experiment with)
     if grad_clip > 0.0:
         torch.nn.utils.clip_grad_norm_(orig_model.parameters(), grad_clip)
     # step the optimizers
@@ -295,7 +294,7 @@ for step in range(num_iterations + 1):
     smooth_train_loss = ema_beta * smooth_train_loss + (1 - ema_beta) * train_loss.item() # EMA the training loss
     debiased_smooth_loss = smooth_train_loss / (1 - ema_beta**(step + 1)) # debias the EMA
     pct_done = 100 * step / num_iterations
-    tok_per_sec = int(world_tokens_per_fwdbwd / dt)
+    tok_per_sec = int(total_batch_size / dt)
     flops_per_sec = num_flops_per_token * total_batch_size / dt
     promised_flops_per_sec_h100 = 989e12 * ddp_world_size # bfloat16 H100 SXM and without 2:4 sparsity
     mfu = 100 * flops_per_sec / promised_flops_per_sec_h100 # in %
