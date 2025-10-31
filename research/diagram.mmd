@@ -1,0 +1,50 @@
+flowchart TD
+  subgraph Data["Data & Tokenizer"]
+    D0[(FineWeb-Edu shards<br/>~100MB parquet each)]
+    TK[rustbpe + tiktoken<br/>train + export]
+    TB[token_bytes.pt<br/>bytes per token]
+    D0 -->|nanochat.dataset<br/>download/iterate| TK
+    TK -->|save to ~/.cache/nanochat/tokenizer| TB
+  end
+
+  subgraph Pretrain["Base Model Training (scripts/base_train.py)"]
+    DL[Streaming DataLoader<br/>tokenize → BOS prepend,<br/>B×T microbatches]
+    OPT[Optimizers<br/>Muon matrices + AdamW embeds, lm_head]
+    CKPT[(base_checkpoints/dXX)]
+    DL -->|inputs:int32, targets:int64| GPT
+    GPT[GPT rotary, QK-norm, MQA<br/>n_layer=depth · n_embd · n_head]
+    GPT --> OPT
+    OPT -->|state_dicts + meta| CKPT
+  end
+
+  subgraph Mid_SFT_RL["Midtraining, SFT, (Optional) RL"]
+    MID[(mid_checkpoints/dXX)]
+    SFT[(chatsft_checkpoints/dXX)]
+    RL[(chatrl_checkpoints/dXX)]
+    MIX[Mixtures: SmolTalk, GSM8K,<br/>MMLU, ARC, CustomJSON]
+    CKPT -->|load model| MIDT[scripts/mid_train.py]
+    MIX --> MIDT --> MID
+    MID -->|load| SFTT[scripts/chat_sft.py]
+    MIX --> SFTT --> SFT
+    SFT -->|load| RLT[scripts/chat_rl.py]
+    GSM8K[(GSM8K)] --> RLT --> RL
+  end
+
+  subgraph Inference["Inference & Evaluation"]
+    ENG[Engine batched streaming,<br/>KV cache cloning, tools]
+    EVAL[CORE & Chat evals<br/>ARC/MMLU/GSM8K/HumanEval]
+    CKPT -. alt .-> ENG
+    MID -. alt .-> ENG
+    SFT -. default .-> ENG
+    RL -. alt .-> ENG
+    ENG --> EVAL
+  end
+
+  subgraph Serve["Serve"]
+    API[FastAPI server<br/>scripts/chat_web.py]
+    UI[Static Web UI nanochat/ui.html]
+    API --> UI
+    ENG --> API
+  end
+
+  Data --> Pretrain --> Mid_SFT_RL --> Inference --> Serve
